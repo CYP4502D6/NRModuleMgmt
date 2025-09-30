@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 	"errors"
+	"strings"
 
 	"go.bug.st/serial"
 )
@@ -145,8 +146,36 @@ func (pd *PortDaemon) run() {
 			for id, ch = range pending {
 				break
 			}
-			delete(pending, id)
-			ch <- SerialResponse{ID: id, Data: data}
+
+			var responseData []byte
+			responseData = append(responseData, data...)
+			for {
+				select {
+				case moreData := <- pd.rxChan:
+					if moreData == nil {
+						ch <- SerialResponse{ID: id, Data: responseData, Err: io.ErrClosedPipe}
+						delete(pending, id)
+						continue
+					}
+
+					responseData = append(responseData, moreData...)
+					responseStr := string(responseData)
+
+					if strings.Contains(responseStr, "OK") || strings.Contains(responseStr, "ERROR") {
+						delete(pending, id)
+						ch <- SerialResponse{ID: id, Data: responseData}
+						break
+					}
+
+				case <- time.After(500 * time.Millisecond):
+					delete(pending, id)
+					ch <- SerialResponse{ID: id, Data: responseData}
+
+				case <- pd.quit:
+					return
+				}	
+			}
+			
 			
 		case <- pd.quit:
 			return

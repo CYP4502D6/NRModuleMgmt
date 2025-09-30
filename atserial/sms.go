@@ -2,6 +2,7 @@ package atserial
 
 import (
 	"log"
+	"fmt"
 	"time"
 	"errors"
 	"strconv"
@@ -91,14 +92,37 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 					log.Println("[NRModuleSMS] fetch sms, sender:", smsSender, "content:", smsContent, "status:", smsStatus, "date:", dateStr)
 					resSMS = append(resSMS, sms)
 				} else {
-					resulterr = errors.New("parse SMS failed")
+					resulterr = errors.Join(resulterr, errors.New("parse SMS" + string(index) + " failed"))
 				}
 			}
 		}
 		
 	} else {
-		return resSMS, errors.New("fetch sms rawdata failed")
+		return nil, errors.New("fetch sms rawdata failed")
 	}
 	
  	return resSMS, resulterr
 } 
+
+func (nri *NRInterface) DeleteSMS(indices []int) error {
+
+	var atcmds []string
+	for i, index := range indices {
+		if i == 0 {
+			atcmds = append(atcmds, fmt.Sprintf("AT+CMGD=%d", index))
+		} else {
+			atcmds = append(atcmds, fmt.Sprintf("+CMGD=%d", index))
+		}
+	}
+	atcmd := strings.Join(atcmds, ";")
+	atcmd += "\r\n"
+
+	rawdata := nri.FetchRawData(atcmd)
+	if strings.Contains(rawdata, "OK") {
+		
+	} else {
+		return errors.New("delete sms failed, serial output:" + rawdata)
+	}
+
+	return nil
+}

@@ -41,7 +41,6 @@ type NRModuleSignalInfo struct {
 
 func (info *NRModuleInfo) Update(nri *NRInterface) error {
 
-	var resulterr error = nil
 	rawdata := (*nri).FetchRawData("ATI;+QTEMP;+QSIMSTAT?;+QUIMSLOT?\r\n")
 
 	if strings.Contains(rawdata, "OK") {
@@ -75,19 +74,18 @@ func (info *NRModuleInfo) Update(nri *NRInterface) error {
 			}
 		} else {
 			log.Println("[NRModuleInfo] update failed, output length", len(infodata))
-			resulterr = errors.New("NRModuleInfo update failed")
+			return errors.New("NRModuleInfo update failed")
 		}
 	} else {
 		log.Println("[NRModuleInfo] update failed, serial output", rawdata)
-		resulterr = errors.New("NRModuleInfo update failed")
+		return errors.New("NRModuleInfo update failed")
 	}
 	
-	return resulterr
+	return nil
 }
 
 func (info *NRModuleNetworkInfo) Update(nri *NRInterface) error {
 
-	var resulterr error = nil
 	var non_nr_download, non_nr_upload, nr_download, nr_upload int
 	
 	if !(*nri).ModuleInfo.SimStatus {
@@ -156,15 +154,13 @@ func (info *NRModuleNetworkInfo) Update(nri *NRInterface) error {
 		}
 	} else {
 		log.Println("[NRModuleNetworkInfo] update failed, rawdata:", rawdata)
-		resulterr = errors.New("NRModuleNetworkInfo update failed")
+		return errors.New("NRModuleNetworkInfo update failed")
 	}
 	
-	return resulterr
+	return nil
 }
 
 func (info *NRModuleSignalInfo) Update(nri *NRInterface) error {
-
-	var resulterr error = nil
 
 	if !(*nri).ModuleInfo.SimStatus {
 		return errors.New("network not connected")
@@ -208,7 +204,7 @@ func (info *NRModuleSignalInfo) Update(nri *NRInterface) error {
 	} else {
 		return errors.New("no signal info")
 	}
-	return resulterr
+	return nil
 }
 
 func bytesToSize(bytes float64) string {

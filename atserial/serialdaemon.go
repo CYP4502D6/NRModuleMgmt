@@ -91,7 +91,7 @@ func (pd *PortDaemon) Query(req SerialRequest) (SerialResponse, error) {
 func (pd *PortDaemon) readLoop(port serial.Port) {
 	
 	defer port.Close()
-	buf := make([]byte, 1024)
+	buf := make([]byte, 32768)
 	
 	for {
 		n, err := port.Read(buf)
@@ -149,33 +149,40 @@ func (pd *PortDaemon) run() {
 
 			var responseData []byte
 			responseData = append(responseData, data...)
-			for {
-				select {
-				case moreData := <- pd.rxChan:
-					if moreData == nil {
-						ch <- SerialResponse{ID: id, Data: responseData, Err: io.ErrClosedPipe}
-						delete(pending, id)
-						continue
-					}
-
-					responseData = append(responseData, moreData...)
-					responseStr := string(responseData)
-
-					if strings.Contains(responseStr, "OK") || strings.Contains(responseStr, "ERROR") {
+			responseStr := string(responseData)
+			
+			if strings.Contains(responseStr, "OK") || strings.Contains(responseStr, "ERROR") || strings.Contains(responseStr, ">") {
+				delete(pending, id)
+				ch <- SerialResponse{ID: id, Data: responseData}
+			} else {
+				for {
+					select {
+					case moreData := <- pd.rxChan:
+						if moreData == nil {
+							ch <- SerialResponse{ID: id, Data: responseData, Err: io.ErrClosedPipe}
+							delete(pending, id)
+							continue
+						}
+						
+						responseData = append(responseData, moreData...)
+						responseStr = string(responseData)
+						
+						if strings.Contains(responseStr, "OK") || strings.Contains(responseStr, "ERROR") || strings.Contains(responseStr, ">") {
+							delete(pending, id)
+							ch <- SerialResponse{ID: id, Data: responseData}
+							break
+						}
+						
+					case <- time.After(500 * time.Millisecond):
+						log.Println("[PortDaemon] response timeout without status")
 						delete(pending, id)
 						ch <- SerialResponse{ID: id, Data: responseData}
-						break
+						
+					case <- pd.quit:
+						return
 					}
-
-				case <- time.After(500 * time.Millisecond):
-					delete(pending, id)
-					ch <- SerialResponse{ID: id, Data: responseData}
-
-				case <- pd.quit:
-					return
-				}	
+				}
 			}
-			
 			
 		case <- pd.quit:
 			return

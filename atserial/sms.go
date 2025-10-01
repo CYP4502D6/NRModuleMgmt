@@ -7,6 +7,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"math/rand"
 	"encoding/hex"
 	"encoding/binary"
 	"unicode/utf16"
@@ -89,7 +90,7 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 						Sender: smsSender,
 						Date: smsDate,
 					}
-					log.Println("[NRModuleSMS] fetch sms, sender:", smsSender, "content:", smsContent, "status:", smsStatus, "date:", dateStr)
+					log.Println("[NRModuleSMS] fetch sms, sender:", smsSender, "content:", smsContent, "status:", smsStatus, "indices", smsIndices, "date:", dateStr)
 					resSMS = append(resSMS, sms)
 				} else {
 					resulterr = errors.Join(resulterr, errors.New("parse SMS" + string(index) + " failed"))
@@ -119,10 +120,38 @@ func (nri *NRInterface) DeleteSMS(indices []int) error {
 
 	rawdata := nri.FetchRawData(atcmd)
 	if strings.Contains(rawdata, "OK") {
-		
+		log.Println("[NRModuleSMS] delete sms successfully", indices)
 	} else {
+		log.Println("[NRModuleSMS] delete sms failed", rawdata)
 		return errors.New("delete sms failed, serial output:" + rawdata)
 	}
 
+	return nil
+}
+
+func (nri *NRInterface) SendRawSMS(phone string, msg string) error {
+
+	rand.Seed(time.Now().UnixNano())
+	uid := rand.Intn(256)
+
+	phoneUCS2 := fmt.Sprintf("%X", stringToUCS2Hex(phone))
+	msgUCS2 := fmt.Sprintf("%X", stringToUCS2Hex(msg))
+
+	atcmd := fmt.Sprintf("AT+CMGF=1;+CSCS=\"UCS2\";+CMGS=\"%s\",%d,1,1\r\n", phoneUCS2, uid)
+	
+	rawdata := nri.FetchRawData(atcmd)
+	
+	if strings.Contains(rawdata, ">") {
+		atcmd = msgUCS2 + string(rune(0x1A)) + "\r\n"
+		rawdata = nri.FetchRawData(atcmd)
+		if strings.Contains(rawdata, "OK") {
+			return nil
+		} else {
+			return errors.New("sms sender error" + rawdata)
+		}
+	} else {
+		return errors.New("sms sender not receive the prompt")
+	}
+	
 	return nil
 }

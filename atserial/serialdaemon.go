@@ -5,8 +5,9 @@ import (
 	"log"
 	"sync"
 	"time"
+	"bytes"
 	"errors"
-	"strings"
+//	"strings"
 
 	"go.bug.st/serial"
 )
@@ -26,6 +27,39 @@ type SerialResponse struct {
 type msgIn struct {
 	req SerialRequest
 	ch chan SerialResponse
+}
+
+type pendingQueue struct {
+	sync.Mutex
+	q []msgIn
+}
+
+func (pq *pendingQueue) push(m msgIn) {
+	log.Println("[PortQueue] push msg", m.req.ID)
+	pq.Lock()
+	pq.q = append(pq.q, m)
+	pq.Unlock()
+}
+
+func (pq *pendingQueue) headCh() (chan SerialResponse, bool) {
+	pq.Lock()
+	defer pq.Unlock()
+
+	if len(pq.q) == 0 {
+		return nil, false
+	}
+	//log.Println("[PortQueue] head ch is", pq.q[0].req.ID)
+	return pq.q[0].ch, true
+}
+
+func (pq *pendingQueue) pop() {
+	pq.Lock()
+	if len(pq.q) > 0 {
+		log.Println("[PortQueue] queue:")
+		log.Println(pq.q)
+		pq.q = pq.q[1:]
+	}
+	pq.Unlock()
 }
 
 type PortDaemon struct {
@@ -120,71 +154,70 @@ func (pd *PortDaemon) writeLoop(port serial.Port) {
 	}
 }
 
+func isStatusStop(p []byte) bool {
+	if bytes.Contains(p, []byte("OK")) || bytes.Contains(p, []byte("ERROR")) || bytes.Contains(p, []byte(">")){
+		return true
+	}
+	return false
+}
+
+func (pd *PortDaemon) waitFullResp(resp []byte, rxChan <-chan []byte, quit <-chan struct{}) ([]byte, error) {
+	for {
+		if isStatusStop(resp) {
+			return resp, nil
+		}
+		select {
+		case more := <-rxChan:
+			if more == nil {
+				return resp, io.ErrClosedPipe
+			}
+			resp = append(resp, more...)
+
+		case <-time.After(500 * time.Millisecond):
+			log.Println("[PortDaemon] response timeout without status")
+			return resp, nil
+
+		case <-quit:
+			return nil, errors.New("daemon quitting")
+		}
+	}
+}
+
 func (pd *PortDaemon) run() {
-
-	pending := make(map[uint32]chan SerialResponse)
-
+	pending := &pendingQueue{}
+	
 	for {
 		select {
-		case m := <- pd.reqChan:
+		case m := <-pd.reqChan:
 			pd.txChan <- m.req.Data
-			pending[m.req.ID] = m.ch
-
-		case data := <- pd.rxChan:
-			if data == nil { 
-				for _, ch := range pending {
-					ch <- SerialResponse{Err: io.ErrClosedPipe}
+			pending.push(m)
+						
+		case data := <-pd.rxChan:
+			if data == nil {
+				pending.Lock()
+				for _, v := range pending.q {
+					v.ch <- SerialResponse{Err: io.ErrClosedPipe}
 				}
+				pending.q = nil
+				pending.Unlock()
 				return
 			}
-			if len(pending) == 0 {
+			
+			ch, ok := pending.headCh()
+			if !ok {
+				log.Println("[PortDaemon] receive no id data", string(data))
 				continue
 			}
-			
-			var id uint32
-			var ch chan SerialResponse
-			for id, ch = range pending {
-				break
-			}
 
-			var responseData []byte
-			responseData = append(responseData, data...)
-			responseStr := string(responseData)
-			
-			if strings.Contains(responseStr, "OK") || strings.Contains(responseStr, "ERROR") || strings.Contains(responseStr, ">") {
-				delete(pending, id)
-				ch <- SerialResponse{ID: id, Data: responseData}
+			full, err := pd.waitFullResp(data, pd.rxChan, pd.quit)
+			if err != nil {
+				ch <- SerialResponse{Err: err}
 			} else {
-				for {
-					select {
-					case moreData := <- pd.rxChan:
-						if moreData == nil {
-							ch <- SerialResponse{ID: id, Data: responseData, Err: io.ErrClosedPipe}
-							delete(pending, id)
-							continue
-						}
-						
-						responseData = append(responseData, moreData...)
-						responseStr = string(responseData)
-						
-						if strings.Contains(responseStr, "OK") || strings.Contains(responseStr, "ERROR") || strings.Contains(responseStr, ">") {
-							delete(pending, id)
-							ch <- SerialResponse{ID: id, Data: responseData}
-							break
-						}
-						
-					case <- time.After(500 * time.Millisecond):
-						log.Println("[PortDaemon] response timeout without status")
-						delete(pending, id)
-						ch <- SerialResponse{ID: id, Data: responseData}
-						
-					case <- pd.quit:
-						return
-					}
-				}
+				ch <- SerialResponse{ID: 0, Data: full}
 			}
-			
-		case <- pd.quit:
+			pending.pop()
+
+		case <-pd.quit:
 			return
 		}
 	}

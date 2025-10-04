@@ -46,22 +46,22 @@ func NewNRInterface(port NRInterfacePort, isLocal bool) *NRInterface {
 	return nri
 }
 
-func (nri *NRInterface) FetchRawData(atcommand string) string {
+func (nri *NRInterface) FetchRawData(atcommand string, timeout time.Duration) string {
 
 	if nri.IsLocal {
-		return nri.fetchRawDataLocal(atcommand)
+		return nri.fetchRawDataLocal(atcommand, timeout)
 	}
 
 	return nri.fetchRawDataRemote(atcommand)
 }
 
-func (nri *NRInterface) fetchRawDataLocal(atcommand string) string {
+func (nri *NRInterface) fetchRawDataLocal(atcommand string, timeout time.Duration) string {
 
 	nri.reqID++
 	req := SerialRequest{
 		ID: nri.reqID,
 		Data: []byte(atcommand),
-		Timeout: 2 * time.Second,
+		Timeout: timeout,
 	}
 
 	rsp, err := nri.supervisor.Query(req)

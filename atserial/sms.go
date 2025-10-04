@@ -58,7 +58,7 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 	var resSMS []NRModuleSMS
 	var resulterr error
 	
-	rawdata := nri.FetchRawData("AT+CSMS=1;+CSDH=0;+CNMI=2,1,0,0,0;+CMGF=1;+CSCA?;+CSMP=17,167,0,8;+CPMS=\"ME\",\"ME\",\"ME\";+CSCS=\"UCS2\";+CMGL=\"ALL\"\r\n")
+	rawdata := nri.FetchRawData("AT+CSMS=1;+CSDH=0;+CNMI=2,1,0,0,0;+CMGF=1;+CSCA?;+CSMP=17,167,0,8;+CPMS=\"ME\",\"ME\",\"ME\";+CSCS=\"UCS2\";+CMGL=\"ALL\"\r\n", 2 * time.Second)
 
 	if strings.Contains(rawdata, "OK") {
 		
@@ -118,7 +118,7 @@ func (nri *NRInterface) DeleteSMS(indices []int) error {
 	atcmd := strings.Join(atcmds, ";")
 	atcmd += "\r\n"
 
-	rawdata := nri.FetchRawData(atcmd)
+	rawdata := nri.FetchRawData(atcmd, time.Second)
 	if strings.Contains(rawdata, "OK") {
 		log.Println("[NRModuleSMS] delete sms successfully", indices)
 	} else {
@@ -139,11 +139,15 @@ func (nri *NRInterface) SendRawSMS(phone string, msg string) error {
 
 	atcmd := fmt.Sprintf("AT+CMGF=1;+CSCS=\"UCS2\";+CMGS=\"%s\",%d,1,1\r\n", phoneUCS2, uid)
 	
-	rawdata := nri.FetchRawData(atcmd)
+	rawdata := nri.FetchRawData(atcmd, time.Second)
 	
 	if strings.Contains(rawdata, ">") {
-		atcmd = msgUCS2 + string(rune(0x1A)) + "\r\n"
-		rawdata = nri.FetchRawData(atcmd)
+		atcmd = msgUCS2 + string(rune(0x1A))
+		rawdata = nri.FetchRawData(atcmd, 3 * time.Second)
+		
+		time.Sleep(time.Second)
+		
+		log.Println("[SMS Sender] rawdata:", rawdata)
 		if strings.Contains(rawdata, "OK") {
 			return nil
 		} else {

@@ -2,6 +2,7 @@ package atserial
 
 import (
 	"log"
+	"time"
 	"math"
 	"errors"
 	"strconv"
@@ -41,7 +42,7 @@ type NRModuleSignalInfo struct {
 
 func (info *NRModuleInfo) Update(nri *NRInterface) error {
 
-	rawdata := (*nri).FetchRawData("ATI;+QTEMP;+QSIMSTAT?;+QUIMSLOT?\r\n")
+	rawdata := (*nri).FetchRawData("ATI;+QTEMP;+QSIMSTAT?;+QUIMSLOT?\r\n", time.Second)
 
 	if strings.Contains(rawdata, "OK") {
 		infodata := strings.Split(rawdata, "\r\n")
@@ -92,7 +93,7 @@ func (info *NRModuleNetworkInfo) Update(nri *NRInterface) error {
 		return errors.New("network not connected")
 	}
 	
-	rawdata := (*nri).FetchRawData("AT+QSPN;+QGDCNT?;+QGDNRCNT?;+CGCONTRDP;+QENG=\"servingcell\";+QMAP=\"WWAN\"\r\n")
+	rawdata := (*nri).FetchRawData("AT+QSPN;+QGDCNT?;+QGDNRCNT?;+CGCONTRDP;+QENG=\"servingcell\";+QMAP=\"WWAN\"\r\n", time.Second)
 	
 	if strings.Contains(rawdata, "OK") {
 		infodata := strings.Split(rawdata, "\r\n")
@@ -167,7 +168,7 @@ func (info *NRModuleSignalInfo) Update(nri *NRInterface) error {
 	}
 
 	if strings.Contains((*nri).ModuleNetworkInfo.NetworkMode, "5G") {
-		rawdata := (*nri).FetchRawData("AT+QENG=\"servingcell\"\r\n")
+		rawdata := (*nri).FetchRawData("AT+QENG=\"servingcell\"\r\n", time.Second)
 
 		if strings.Contains(rawdata, "OK") {
 			infodata := strings.Split(rawdata, "\r\n")
@@ -185,7 +186,7 @@ func (info *NRModuleSignalInfo) Update(nri *NRInterface) error {
 		}
 		
 	} else if strings.Contains((*nri).ModuleNetworkInfo.NetworkMode, "LTE") {
-		rawdata := (*nri).FetchRawData("AT+QENG=\"servingcell\"\r\n")
+		rawdata := (*nri).FetchRawData("AT+QENG=\"servingcell\"\r\n", time.Second)
 
 		if strings.Contains(rawdata, "OK") {
 			infodata := strings.Split(rawdata, "\r\n")

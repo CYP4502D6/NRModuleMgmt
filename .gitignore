@@ -4,3 +4,4 @@ go.work
 go.work.sum
 nrmodule
 .DS_Store
+config/config.yaml

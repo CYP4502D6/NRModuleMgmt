@@ -1,7 +1,6 @@
 package atserial
 
 import (
-	"fmt"
 	"math"
 	"time"
 	"errors"
@@ -129,7 +128,6 @@ func (p *SimActiveProvider) Fetch(nri *NRInterface) (interface{}, error) {
 	infodata := strings.Split(rawdata, "\r\n")
 	for _, line := range infodata {
 		if strings.Contains(line, "+QUIMSLOT:") {
-			fmt.Println(line)
 			line = strings.ReplaceAll(line, "\r", "")
 			if len(line) > 0 {
 				return strconv.Atoi(string(line[len(line)-1]))

@@ -3,3 +3,4 @@ main.go
 go.work
 go.work.sum
 nrmodule
+.DS_Store

@@ -1,9 +1,12 @@
 package atserial
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
+	"errors"
+	"strings"
 )
 
 type NRInterfacePort struct {
@@ -21,10 +24,33 @@ type NRInterface struct {
 	mu sync.Mutex
 	supervisor *SerialSupervisor
 	reqID uint32
+
+	infoRegistry *InfoRegistry
+}
+
+func (nri *NRInterface) registerDefaultInfoProviders() {
+
+	nri.infoRegistry.Register(&ModuleNameProvider{})
+	nri.infoRegistry.Register(&ModuleCPUTempProvider{})
+	nri.infoRegistry.Register(&SimStatusProvider{})
+	nri.infoRegistry.Register(&SimActiveProvider{})
 	
-	ModuleInfo NRModuleInfo
-	ModuleNetworkInfo NRModuleNetworkInfo
-	ModuleSignalInfo NRModuleSignalInfo
+	nri.infoRegistry.Register(&APNProvider{})
+	nri.infoRegistry.Register(&IPV4Provider{})
+	nri.infoRegistry.Register(&IPV6Provider{})
+	nri.infoRegistry.Register(&MCCMNCProvider{})
+	nri.infoRegistry.Register(&NetworkModeProvider{})
+	nri.infoRegistry.Register(&DuplexModeProvider{})
+	nri.infoRegistry.Register(&CellIDProvider{})
+	nri.infoRegistry.Register(&DownloadSizeProvider{})
+	nri.infoRegistry.Register(&UploadSizeProvider{})
+	
+	nri.infoRegistry.Register(&LTERSRPProvider{})
+	nri.infoRegistry.Register(&LTERSQProvider{})
+	nri.infoRegistry.Register(&LTESINRProvider{})
+	nri.infoRegistry.Register(&NRRSRPProvider{})
+	nri.infoRegistry.Register(&NRRSQProvider{})
+	nri.infoRegistry.Register(&NRSINRProvider{})
 }
 
 func NewNRInterface(port NRInterfacePort, isLocal bool) *NRInterface {
@@ -34,6 +60,7 @@ func NewNRInterface(port NRInterfacePort, isLocal bool) *NRInterface {
 		LocalSerial: port.LocalPort,
 		LocalSerialBaud: port.LocalBaudRate,
 		RemoteSerial: port.RemoteAPI,
+		infoRegistry: NewInfoRegistry(),
 	}
 
 	if isLocal {
@@ -43,7 +70,86 @@ func NewNRInterface(port NRInterfacePort, isLocal bool) *NRInterface {
 		log.Println("[NRInterface] create remote serial via", nri.RemoteSerial)
 	}
 
+	nri.registerDefaultInfoProviders()
+	
 	return nri
+}
+
+func (nri *NRInterface) RegisterInfoProvider(provider InfoProvider) {
+		
+	nri.infoRegistry.Register(provider)
+}
+
+func (nri *NRInterface) GetInfo(key string) (interface{}, error) {
+	
+	provider, exists := nri.infoRegistry.Get(key)
+	if !exists {
+		return nil, errors.New("info provider not found for key: " + key)
+	}
+	
+	return provider.Fetch(nri)
+}
+
+func (nri *NRInterface) GetAllInfoKeys() []string {
+	
+	return nri.infoRegistry.GetAllKeys()
+}
+
+func (nri *NRInterface) FetchAllInfo() (map[string]interface{}, error) {
+	
+	result := make(map[string]interface{})
+	errors := make([]string, 0)
+	
+	keys := nri.infoRegistry.GetAllKeys()
+	
+	for _, key := range keys {
+		provider, exists := nri.infoRegistry.Get(key)
+		if !exists {
+			errors = append(errors, fmt.Sprintf("provider not found for key: %s", key))
+			continue
+		}
+		
+		info, err := provider.Fetch(nri)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("error fetching %s: %v", key, err))
+			continue
+		}
+		result[key] = info
+	}
+	
+	if len(errors) > 0 {
+		return result, fmt.Errorf("encountered %d errors: %s", len(errors), strings.Join(errors, "; "))
+	}
+	
+	return result, nil
+}
+
+func (nri *NRInterface) FetchMultipleInfo(keys []string) (map[string]interface{}, error) {
+	
+    result := make(map[string]interface{})
+    errors := make([]string, 0)
+    
+    for _, key := range keys {
+        provider, exists := nri.infoRegistry.Get(key)
+        if !exists {
+            errors = append(errors, fmt.Sprintf("provider not found for key: %s", key))
+            continue
+        }
+        
+        info, err := provider.Fetch(nri)
+        if err != nil {
+            errors = append(errors, fmt.Sprintf("error fetching %s: %v", key, err))
+            continue
+        }
+        
+        result[key] = info
+    }
+    
+    if len(errors) > 0 {
+        return result, fmt.Errorf("encountered %d errors: %s", len(errors), strings.Join(errors, "; "))
+    }
+    
+    return result, nil
 }
 
 func (nri *NRInterface) FetchRawData(atcommand string, timeout time.Duration) string {

@@ -35,7 +35,6 @@ type pendingQueue struct {
 }
 
 func (pq *pendingQueue) push(m msgIn) {
-	log.Println("[PortQueue] push msg", m.req.ID)
 	pq.Lock()
 	pq.q = append(pq.q, m)
 	pq.Unlock()
@@ -48,15 +47,12 @@ func (pq *pendingQueue) headCh() (chan SerialResponse, bool) {
 	if len(pq.q) == 0 {
 		return nil, false
 	}
-	//log.Println("[PortQueue] head ch is", pq.q[0].req.ID)
 	return pq.q[0].ch, true
 }
 
 func (pq *pendingQueue) pop() {
 	pq.Lock()
 	if len(pq.q) > 0 {
-		log.Println("[PortQueue] queue:")
-		log.Println(pq.q)
 		pq.q = pq.q[1:]
 	}
 	pq.Unlock()
@@ -97,7 +93,7 @@ func StartPortDaemon(portname string, baudrate int) (*PortDaemon, error) {
 
 	go pd.readLoop(port)
 	go pd.writeLoop(port)
-	go pd.run()
+	//	go pd.run()
 
 	return pd, nil
 }
@@ -162,6 +158,7 @@ func isStatusStop(p []byte) bool {
 }
 
 func (pd *PortDaemon) waitFullResp(resp []byte, rxChan <-chan []byte, quit <-chan struct{}) ([]byte, error) {
+	
 	for {
 		if isStatusStop(resp) {
 			return resp, nil
@@ -184,6 +181,7 @@ func (pd *PortDaemon) waitFullResp(resp []byte, rxChan <-chan []byte, quit <-cha
 }
 
 func (pd *PortDaemon) run() {
+	
 	pending := &pendingQueue{}
 	
 	for {

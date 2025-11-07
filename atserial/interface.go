@@ -152,6 +152,56 @@ func (nri *NRInterface) FetchMultipleInfo(keys []string) (map[string]interface{}
     return result, nil
 }
 
+func (nri *NRInterface) FetchModuleInfo() (map[string]interface{}, error) {
+
+	keys := []string {
+		"ModuleName",
+		"ModuleCPUTemp",
+		"SimStatus",
+		"SimActive",
+	}
+
+	return nri.FetchMultipleInfo(keys)
+}
+
+func (nri *NRInterface) FetchNetworkInfo() (map[string]interface{}, error) {
+
+	keys := []string {
+		"NetworkMode",
+		"DuplexMode",
+		"MCCMNC",
+		"APN",
+		"CellID",
+		"IPV4",
+		"IPV6",
+		"UploadSize",
+		"DownloadSize",
+	}
+
+	return nri.FetchMultipleInfo(keys)
+}
+
+func (nri *NRInterface) FetchSignalInfo(mode string) (map[string]interface{}, error) {
+	
+	if strings.Contains(mode, "NR") {
+		keys := []string{
+			"NR_RSRP",
+			"NR_RSRQ",
+			"NR_SINR",
+		}
+		return nri.FetchMultipleInfo(keys)
+	} else if strings.Contains(mode, "LTE") {
+		keys := []string{
+			"LTE_RSRP",
+			"LTE_RSRQ",
+			"LTE_SINR",
+		}
+		return nri.FetchMultipleInfo(keys)
+	}
+
+	return nil, errors.New("network mode not recognized")
+}
+
 func (nri *NRInterface) FetchRawData(atcommand string, timeout time.Duration) string {
 
 	if nri.IsLocal {

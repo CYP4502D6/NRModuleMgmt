@@ -1,0 +1,18 @@
+serial:
+  is_local: true
+  port: "/dev/ttyUSB2"  # 根据实际情况修改
+  baud_rate: 9600
+  # remote_api: "http://remote-serial-api" # is_local: false 时使用
+
+# 短信管理器配置
+sms:
+  # 数据库文件路径
+  db_path: "sms.db"
+  # 检查新短信的间隔时间
+  check_interval: "30s"
+
+# Discord 机器人配置
+discord:
+  bot_token: "YOUR_DISCORD_BOT_TOKEN"  # 替换为你的机器人Token
+  # 接收命令和推送消息的频道ID
+  channel_id: "YOUR_DISCORD_CHANNEL_ID" # 替换为你的频道ID

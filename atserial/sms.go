@@ -108,6 +108,11 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 func (nri *NRInterface) DeleteSMS(indices []int) error {
 
 	var atcmds []string
+
+	if len(indices) == 0 {
+		return nil
+	}
+	
 	for i, index := range indices {
 		if i == 0 {
 			atcmds = append(atcmds, fmt.Sprintf("AT+CMGD=%d", index))

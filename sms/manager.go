@@ -101,6 +101,7 @@ func (m *Manager) checkAndProcessSMS() {
 	}
 
 	if len(smsList) == 0 {
+		log.Println("[SMSManager] no incoming sms")
 		return
 	}
 
@@ -126,10 +127,23 @@ func (m *Manager) checkAndProcessSMS() {
 		indicesToDelete = append(indicesToDelete, sms.Indices)
 	}
 
-	if len(indicesToDelete) > 0 {
+	if len(indicesToDelete) > 0 && len(indicesToDelete) <= 10 {
 		err := m.nri.DeleteSMS(indicesToDelete)
 		if err != nil {
 			log.Println("[SMSManager] delete incoming sms failed", err)
+		}
+	} else if len(indicesToDelete) > 10 {
+
+		lenDel := len(indicesToDelete)
+		for i := 0; i < lenDel; i += 10 {
+			end := i + 10
+			if end > lenDel {
+				end = lenDel
+			}
+			err := m.nri.DeleteSMS(indicesToDelete[i:end])
+			if err != nil {
+				log.Println("[SMSManager] delete incoming sms failed", err)
+			}
 		}
 	}
 

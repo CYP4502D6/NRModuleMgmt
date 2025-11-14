@@ -1,7 +1,7 @@
 package sms
 
 import (
-	//	"log"
+	"log"
 	"time"
 	"errors"
 	"database/sql"
@@ -46,6 +46,7 @@ func NewSMSDatabase(dbPath string) (*SMSDatabase, error) {
 	_, err = db.Exec(schema)
 	if err != nil {
 		db.Close()
+		log.Println(err)
 		return nil, errors.New("database init failed")
 	}
 

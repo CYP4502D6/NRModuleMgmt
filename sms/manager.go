@@ -1,1 +1,143 @@
 package sms
+
+import (
+	"log"
+	"sync"
+	"time"
+
+	"nrmodule/atserial"
+	"nrmodule/internal"
+)
+
+type Manager struct {
+	nri *atserial.NRInterface
+	db *SMSDatabase
+	observerManager *internal.SMSObserverManager
+
+	checkInterval time.Duration
+	lastCheckTime time.Time
+	mu sync.Mutex
+
+	running bool
+	stopChan chan struct{}
+}
+
+func NewManager(nri *atserial.NRInterface, dbPath string, checkInterval time.Duration) (*Manager, error) {
+
+	db, err := NewSMSDatabase(dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	manager := &Manager{
+		nri: nri,
+		db: db,
+		observerManager: internal.NewSMSObserverManager(),
+		checkInterval: checkInterval,
+		stopChan: make(chan struct{}),
+	}
+
+	return manager, nil
+}
+
+func (m *Manager) RegisterObserver(observer internal.SMSToObserver) {
+	m.observerManager.Register(observer)
+}
+
+func (m *Manager) Start() error {
+
+	m.mu.Lock()
+	if m.running {
+		m.mu.Unlock()
+		return nil
+	}
+
+	m.running = true
+	m.mu.Unlock()
+
+	log.Println("[SMSManager] start listening")
+
+	go m.monitorLoop()
+	return nil
+}
+
+func (m *Manager) Stop() {
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.running {
+		return
+	}
+	close(m.stopChan)
+	log.Println("[SMSManager] stop listening")
+}
+
+func (m *Manager) monitorLoop() {
+
+	ticker := time.NewTicker(m.checkInterval)
+	defer ticker.Stop()
+
+	m.checkAndProcessSMS()
+
+	for {
+		select {
+		case <-ticker.C:
+			m.checkAndProcessSMS()
+		case <-m.stopChan:
+			log.Println("[SMSManager] exiting the monitor loop")
+		}
+	}
+}
+
+func (m *Manager) checkAndProcessSMS() {
+
+	log.Println("[SMSManager] checking SMS")
+
+	smsList, err := m.nri.FetchSMS()
+	if err != nil {
+		log.Println("[SMSManager] fetch sms failed,", err)
+		return
+	}
+
+	if len(smsList) == 0 {
+		return
+	}
+
+	var indicesToDelete []int
+	newSMSCount := 0
+
+	for _, sms := range smsList {
+
+		dbID, isNew, err := m.db.InsertSMS(sms)
+		if err != nil {
+			log.Println("[SMSManager] insert sms to database failed,", err)
+			continue
+		}
+
+		if isNew {
+			log.Println("[SMSManager] new sms", dbID, " from", sms.Sender)
+			m.observerManager.NotifyNewSMS(sms)
+			newSMSCount++
+		} else {
+			log.Println("[SMSManager] existed sms", dbID, " from", sms.Sender)
+		}
+
+		indicesToDelete = append(indicesToDelete, sms.Indices)
+	}
+
+	if len(indicesToDelete) > 0 {
+		err := m.nri.DeleteSMS(indicesToDelete)
+		if err != nil {
+			log.Println("[SMSManager] delete incoming sms failed", err)
+		}
+	}
+
+	log.Println("[SMSManager] process complete, sms count:", len(smsList), ", new sms count", newSMSCount)
+}
+
+func (m *Manager) Close() error {
+
+	m.Stop()
+	return m.db.Close()
+}

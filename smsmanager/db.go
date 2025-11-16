@@ -1,20 +1,19 @@
-package sms
+package smsmanager
 
 import (
+	"database/sql"
+	"errors"
 	"log"
 	"time"
-	"errors"
-	"database/sql"
-	
+
 	_ "github.com/mattn/go-sqlite3"
-	
+
 	"nrmodule/atserial"
-	
 )
 
 type SMSRecord struct {
 	atserial.NRModuleSMS
-	DBID int64
+	DBID    int64
 	CreatAt time.Time
 }
 
@@ -23,7 +22,7 @@ type SMSDatabase struct {
 }
 
 func NewSMSDatabase(dbPath string) (*SMSDatabase, error) {
-	
+
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return nil, errors.New("database not found")
@@ -42,7 +41,7 @@ func NewSMSDatabase(dbPath string) (*SMSDatabase, error) {
 	);
 	CREATE INDEX IF NOT EXISTS idx_received_at ON sms(received_at);
 	`
-	
+
 	_, err = db.Exec(schema)
 	if err != nil {
 		db.Close()
@@ -53,17 +52,16 @@ func NewSMSDatabase(dbPath string) (*SMSDatabase, error) {
 	return &SMSDatabase{db: db}, nil
 }
 
-
 func (sdb *SMSDatabase) getSMSID(sms atserial.NRModuleSMS) (int64, error) {
-	
+
 	var id int64
-	
+
 	query := `
 	SELECT id FROM sms
 	WHERE sender = ? AND content = ? AND received_at = ?
 	LIMIT 1
 	`
-	
+
 	err := sdb.db.QueryRow(query, sms.Sender, sms.Text, sms.Date).Scan(&id)
 	if err != nil {
 		return 0, err
@@ -72,12 +70,12 @@ func (sdb *SMSDatabase) getSMSID(sms atserial.NRModuleSMS) (int64, error) {
 }
 
 func (sdb *SMSDatabase) InsertSMS(sms atserial.NRModuleSMS) (dbID int64, isNew bool, err error) {
-	
+
 	result, err := sdb.db.Exec(`
 		INSERT OR IGNORE INTO sms (sender, content, status, received_at, module_indices)
 		VALUES (?, ?, ?, ?, ?)
 	`, sms.Sender, sms.Text, sms.Status, sms.Date, sms.Indices)
-	
+
 	if err != nil {
 		return 0, false, err
 	}
@@ -93,12 +91,12 @@ func (sdb *SMSDatabase) InsertSMS(sms atserial.NRModuleSMS) (dbID int64, isNew b
 }
 
 func (sdb *SMSDatabase) GetSMSByID(id int64) (*SMSRecord, error) {
-	
+
 	query := `
 		SELECT id, sender, content, status, received_at, module_indices, created_at
 		FROM sms WHERE id = ?
 	`
-	
+
 	var record SMSRecord
 	err := sdb.db.QueryRow(query, id).Scan(
 		&record.DBID,
@@ -113,16 +111,16 @@ func (sdb *SMSDatabase) GetSMSByID(id int64) (*SMSRecord, error) {
 	if err != nil {
 		return nil, errors.New("sms doesn't exist")
 	}
-	
+
 	return &record, err
 }
 
 func (sdb *SMSDatabase) GetSMSByRange(startID int64, endID int64) ([]*SMSRecord, error) {
-	
+
 	if startID > endID {
 		return nil, errors.New("range error")
 	}
-	
+
 	query := `
 	SELECT id, sender, content, status, received_at, module_indices, created_at
 	FROM sms
@@ -155,6 +153,11 @@ func (sdb *SMSDatabase) GetSMSByRange(startID int64, endID int64) ([]*SMSRecord,
 	return records, rows.Err()
 }
 
+func (sdb *SMSDatabase) GetSMSCount() (int64, error) {
+	var count int64
+	err := sdb.db.QueryRow("SELECT COUNT(*) FROM sms").Scan(&count)
+	return count, err
+}
 
 func (sdb *SMSDatabase) Close() error {
 	return sdb.db.Close()

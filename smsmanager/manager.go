@@ -1,4 +1,4 @@
-package sms
+package smsmanager
 
 import (
 	"log"
@@ -6,19 +6,18 @@ import (
 	"time"
 
 	"nrmodule/atserial"
-	"nrmodule/internal"
 )
 
 type Manager struct {
-	nri *atserial.NRInterface
-	db *SMSDatabase
-	observerManager *internal.SMSObserverManager
+	nri             *atserial.NRInterface
+	db              *SMSDatabase
+	observerManager *SMSObserverManager
 
 	checkInterval time.Duration
 	lastCheckTime time.Time
-	mu sync.Mutex
+	mu            sync.Mutex
 
-	running bool
+	running  bool
 	stopChan chan struct{}
 }
 
@@ -30,17 +29,17 @@ func NewManager(nri *atserial.NRInterface, dbPath string, checkInterval time.Dur
 	}
 
 	manager := &Manager{
-		nri: nri,
-		db: db,
-		observerManager: internal.NewSMSObserverManager(),
-		checkInterval: checkInterval,
-		stopChan: make(chan struct{}),
+		nri:             nri,
+		db:              db,
+		observerManager: NewSMSObserverManager(),
+		checkInterval:   checkInterval,
+		stopChan:        make(chan struct{}),
 	}
 
 	return manager, nil
 }
 
-func (m *Manager) RegisterObserver(observer internal.SMSToObserver) {
+func (m *Manager) RegisterObserver(observer SMSToObserver) {
 	m.observerManager.Register(observer)
 }
 
@@ -154,4 +153,16 @@ func (m *Manager) Close() error {
 
 	m.Stop()
 	return m.db.Close()
+}
+
+func (m *Manager) GetDBStats() (int64, error) {
+	return m.db.GetSMSCount()
+}
+
+func (m *Manager) GetSMSByID(id int64) (*SMSRecord, error) {
+	return m.db.GetSMSByID(id)
+}
+
+func (m *Manager) GetSMSByIDRange(start, end int64) ([]*SMSRecord, error) {
+	return m.db.GetSMSByRange(start, end)
 }

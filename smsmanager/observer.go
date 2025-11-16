@@ -1,4 +1,4 @@
-package internal
+package smsmanager
 
 import (
 	"nrmodule/atserial"

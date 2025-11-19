@@ -71,6 +71,14 @@ func (bot *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageC
 	case "info":
 		bot.processInfoCmd(s, m, args[1:])
 
+	case "check":
+		checkingMsg, _ := s.ChannelMessageSend(m.ChannelID, "Manual check trigger signal sent, checking in progress")
+
+		bot.smsManager.TriggerCheck()
+		time.Sleep(2 * time.Second)
+		
+		s.ChannelMessageEdit(m.ChannelID, checkingMsg.ID, "Signal has been triggered, a new SMS will be sent")
+
 	default:
 		bot.session.ChannelMessageSend(m.ChannelID, "unknown command, type !help to view help") 
 	}
@@ -161,8 +169,9 @@ func (bot *DiscordBot) Start() error {
 	if err != nil {
 		return fmt.Errorf("Discord connect failed! %w", err)
 	}
-
 	log.Println("[DiscordBot] listening channel", bot.channelID)
+	bot.smsManager.RegisterObserver(bot)
+
 	return nil
 }
 

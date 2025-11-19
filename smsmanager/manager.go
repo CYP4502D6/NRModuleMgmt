@@ -19,6 +19,7 @@ type Manager struct {
 
 	running  bool
 	stopChan chan struct{}
+	triggerChan chan struct{}
 }
 
 func NewManager(nri *atserial.NRInterface, dbPath string, checkInterval time.Duration) (*Manager, error) {
@@ -34,6 +35,7 @@ func NewManager(nri *atserial.NRInterface, dbPath string, checkInterval time.Dur
 		observerManager: NewSMSObserverManager(),
 		checkInterval:   checkInterval,
 		stopChan:        make(chan struct{}),
+		triggerChan:     make(chan struct{}, 1),
 	}
 
 	return manager, nil
@@ -72,6 +74,15 @@ func (m *Manager) Stop() {
 	log.Println("[SMSManager] stop listening")
 }
 
+func (m *Manager) TriggerCheck() {
+	select {
+	case m.triggerChan <- struct{}{}:
+		log.Println("[SMSManager] send manual trigger signal")
+	default:
+		log.Println("[SMSManager] triggering channel busy, skip")
+	}
+}
+
 func (m *Manager) monitorLoop() {
 
 	ticker := time.NewTicker(m.checkInterval)
@@ -83,6 +94,10 @@ func (m *Manager) monitorLoop() {
 		select {
 		case <-ticker.C:
 			m.checkAndProcessSMS()
+
+		case <-m.triggerChan:
+			m.checkAndProcessSMS()
+			
 		case <-m.stopChan:
 			log.Println("[SMSManager] exiting the monitor loop")
 		}
@@ -91,6 +106,11 @@ func (m *Manager) monitorLoop() {
 
 func (m *Manager) checkAndProcessSMS() {
 
+	if len(m.observerManager.observers) == 0 {
+		log.Println("[SMSManager] no observer registed, skip check")
+		return
+	}
+	
 	log.Println("[SMSManager] checking SMS")
 
 	smsList, err := m.nri.FetchSMS()
@@ -114,6 +134,7 @@ func (m *Manager) checkAndProcessSMS() {
 			log.Println("[SMSManager] insert sms to database failed,", err)
 			continue
 		}
+		isNew = true
 		if isNew {
 			log.Println("[SMSManager] new sms", dbID, " from", sms.Sender)
 			m.observerManager.NotifyNewSMS(sms)
@@ -122,7 +143,7 @@ func (m *Manager) checkAndProcessSMS() {
 			log.Println("[SMSManager] existed sms", dbID, " from", sms.Sender)
 		}
 
-		indicesToDelete = append(indicesToDelete, sms.Indices)
+		//indicesToDelete = append(indicesToDelete, sms.Indices)
 	}
 	
 	if len(indicesToDelete) > 0 && len(indicesToDelete) <= 10 {

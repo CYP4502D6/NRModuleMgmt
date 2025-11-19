@@ -7,26 +7,25 @@ import (
 	"time"
 	"bytes"
 	"errors"
-//	"strings"
 
 	"go.bug.st/serial"
 )
 
 type SerialRequest struct {
-	ID uint32
-	Data []byte
+	ID      uint32
+	Data    []byte
 	Timeout time.Duration
 }
 
 type SerialResponse struct {
-	ID uint32
+	ID   uint32
 	Data []byte
-	Err error
+	Err  error
 }
 
 type msgIn struct {
 	req SerialRequest
-	ch chan SerialResponse
+	ch  chan SerialResponse
 }
 
 type pendingQueue struct {
@@ -63,32 +62,32 @@ type PortDaemon struct {
 	baudrate int
 
 	reqChan chan msgIn
-	txChan chan []byte
-	rxChan chan []byte
+	txChan  chan []byte
+	rxChan  chan []byte
 
 	quit chan struct{}
 }
 
 func StartPortDaemon(portname string, baudrate int) (*PortDaemon, error) {
-	
-	mode := &serial.Mode {
+
+	mode := &serial.Mode{
 		BaudRate: baudrate,
 	}
 	port, err := serial.Open(portname, mode)
 	port.ResetInputBuffer()
 	port.ResetOutputBuffer()
-	
+
 	if err != nil {
 		return nil, err
 	}
 
-	pd := &PortDaemon {
+	pd := &PortDaemon{
 		portname: portname,
 		baudrate: baudrate,
-		reqChan: make(chan msgIn, 64),
-		txChan: make(chan []byte, 1024),
-		rxChan: make(chan []byte, 1024),
-		quit: make(chan struct{}),
+		reqChan:  make(chan msgIn, 64),
+		txChan:   make(chan []byte, 1024),
+		rxChan:   make(chan []byte, 1024),
+		quit:     make(chan struct{}),
 	}
 
 	go pd.readLoop(port)
@@ -101,33 +100,33 @@ func StartPortDaemon(portname string, baudrate int) (*PortDaemon, error) {
 func (pd *PortDaemon) Query(req SerialRequest) (SerialResponse, error) {
 
 	reply := make(chan SerialResponse, 1)
-	
+
 	select {
 	case pd.reqChan <- msgIn{req: req, ch: reply}:
 
-	case <- time.After(req.Timeout):
+	case <-time.After(req.Timeout):
 		return SerialResponse{}, errors.New("serial daemon channel full/timeout")
 	}
 
 	select {
-	case rsp := <- reply:
+	case rsp := <-reply:
 		return rsp, nil
 
-	case <- time.After(req.Timeout):
+	case <-time.After(req.Timeout):
 		return SerialResponse{}, errors.New("serial daemon response timeout")
 	}
 }
 
 func (pd *PortDaemon) readLoop(port serial.Port) {
-	
+
 	defer port.Close()
 	buf := make([]byte, 32768)
-	
+
 	for {
 		n, err := port.Read(buf)
 		if err != nil {
 			pd.rxChan <- nil
-			return 
+			return
 		}
 		tmp := make([]byte, n)
 		copy(tmp, buf[:n])
@@ -139,26 +138,26 @@ func (pd *PortDaemon) writeLoop(port serial.Port) {
 
 	for {
 		select {
-		case b := <- pd.txChan:
+		case b := <-pd.txChan:
 			if _, err := port.Write(b); err != nil {
 				return
 			}
-			
-		case <- pd.quit:
+
+		case <-pd.quit:
 			return
 		}
 	}
 }
 
 func isStatusStop(p []byte) bool {
-	if bytes.Contains(p, []byte("OK")) || bytes.Contains(p, []byte("ERROR")) || bytes.Contains(p, []byte(">")){
+	if bytes.Contains(p, []byte("OK")) || bytes.Contains(p, []byte("ERROR")) || bytes.Contains(p, []byte(">")) {
 		return true
 	}
 	return false
 }
 
 func (pd *PortDaemon) waitFullResp(resp []byte, rxChan <-chan []byte, quit <-chan struct{}) ([]byte, error) {
-	
+
 	for {
 		if isStatusStop(resp) {
 			return resp, nil
@@ -181,15 +180,15 @@ func (pd *PortDaemon) waitFullResp(resp []byte, rxChan <-chan []byte, quit <-cha
 }
 
 func (pd *PortDaemon) run() {
-	
+
 	pending := &pendingQueue{}
-	
+
 	for {
 		select {
 		case m := <-pd.reqChan:
 			pd.txChan <- m.req.Data
 			pending.push(m)
-						
+
 		case data := <-pd.rxChan:
 			if data == nil {
 				pending.Lock()
@@ -200,7 +199,7 @@ func (pd *PortDaemon) run() {
 				pending.Unlock()
 				return
 			}
-			
+
 			ch, ok := pending.headCh()
 			if !ok {
 				log.Println("[PortDaemon] receive no id data", string(data))
@@ -231,8 +230,8 @@ type SerialSupervisor struct {
 	portname string
 	baudrate int
 
-	mu sync.RWMutex
-	daemon *PortDaemon
+	mu      sync.RWMutex
+	daemon  *PortDaemon
 	started chan struct{}
 }
 
@@ -241,7 +240,7 @@ func NewSupervisor(portname string, baudrate int) *SerialSupervisor {
 	s := &SerialSupervisor{
 		portname: portname,
 		baudrate: baudrate,
-		started: make(chan struct{}),
+		started:  make(chan struct{}),
 	}
 	go s.supervisor()
 
@@ -262,7 +261,7 @@ func (s *SerialSupervisor) supervisor() {
 		s.mu.Unlock()
 
 		select {
-		case <- s.started:
+		case <-s.started:
 
 		default:
 			close(s.started)
@@ -272,8 +271,8 @@ func (s *SerialSupervisor) supervisor() {
 		go func() {
 			d.run()
 			close(done)
-		} ()
-		<- done
+		}()
+		<-done
 
 		s.mu.Lock()
 		s.daemon = nil
@@ -286,7 +285,7 @@ func (s *SerialSupervisor) supervisor() {
 
 func (s *SerialSupervisor) Query(req SerialRequest) (SerialResponse, error) {
 
-	<- s.started
+	<-s.started
 
 	s.mu.RLock()
 	d := s.daemon
@@ -297,4 +296,3 @@ func (s *SerialSupervisor) Query(req SerialRequest) (SerialResponse, error) {
 	}
 	return d.Query(req)
 }
-

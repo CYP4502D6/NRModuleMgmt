@@ -9,15 +9,15 @@ import (
 	"strings"
 	"math/rand"
 	"encoding/hex"
-	"encoding/binary"
 	"unicode/utf16"
+	"encoding/binary"
 )
 
 type NRModuleSMS struct {
-	Text string
-	Sender string
-	Status string
-	Date time.Time
+	Text    string
+	Sender  string
+	Status  string
+	Date    time.Time
 	Indices int
 }
 
@@ -27,14 +27,14 @@ func hexToUCS2(hexIn string) (string, error) {
 	if err != nil {
 		return "", errors.New("hex decode error")
 	}
-	
-	if len(bytes) % 2 != 0 {
+
+	if len(bytes)%2 != 0 {
 		return "", errors.New("invalid UTF16-BE input")
 	}
 
-	uints := make([]uint16, len(bytes) / 2)
+	uints := make([]uint16, len(bytes)/2)
 	for i := 0; i < len(uints); i++ {
-		uints[i] = binary.BigEndian.Uint16(bytes[i * 2: i * 2 + 2])
+		uints[i] = binary.BigEndian.Uint16(bytes[i*2 : i*2+2])
 	}
 
 	result := utf16.Decode(uints)
@@ -46,9 +46,9 @@ func stringToUCS2Hex(strIn string) []byte {
 	runes := []rune(strIn)
 	ucs2 := utf16.Encode(runes)
 
-	buf := make([]byte, 2 * len(ucs2))
+	buf := make([]byte, 2*len(ucs2))
 	for i, v := range ucs2 {
-		binary.BigEndian.PutUint16(buf[i * 2:], v)
+		binary.BigEndian.PutUint16(buf[i*2:], v)
 	}
 	return buf
 }
@@ -57,11 +57,11 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 
 	var resSMS []NRModuleSMS
 	var resulterr error
-	
-	rawdata := nri.FetchRawData("AT+CSMS=1;+CSDH=0;+CNMI=2,1,0,0,0;+CMGF=1;+CSCA?;+CSMP=17,167,0,8;+CPMS=\"ME\",\"ME\",\"ME\";+CSCS=\"UCS2\";+CMGL=\"ALL\"\r\n", 2 * time.Second)
+
+	rawdata := nri.FetchRawData("AT+CSMS=1;+CSDH=0;+CNMI=2,1,0,0,0;+CMGF=1;+CSCA?;+CSMP=17,167,0,8;+CPMS=\"ME\",\"ME\",\"ME\";+CSCS=\"UCS2\";+CMGL=\"ALL\"\r\n", 2*time.Second)
 
 	if strings.Contains(rawdata, "OK") {
-		
+
 		lines := strings.Split(rawdata, "\r\n")
 
 		for index, line := range lines {
@@ -71,8 +71,8 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 				var smsSender string
 				var smsStatus string
 				var smsDate time.Time
-				if index + 1 < len(lines) {
-					smsContent, _ = hexToUCS2(lines[index + 1])
+				if index+1 < len(lines) {
+					smsContent, _ = hexToUCS2(lines[index+1])
 				}
 
 				ctx := strings.Split(line, ",")
@@ -81,29 +81,29 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 					smsStatus = ctx[1]
 					smsSender, resulterr = hexToUCS2(strings.ReplaceAll(ctx[2], "\"", ""))
 					dateStr := strings.ReplaceAll(ctx[4], "\"", "") + "," + strings.ReplaceAll(ctx[5], "\"", "")
-					dateStr = dateStr[:len(dateStr) - 3]
+					dateStr = dateStr[:len(dateStr)-3]
 					smsDate, _ = time.Parse("06/01/02,15:04:05", dateStr)
 					var sms = NRModuleSMS{
-						Text: smsContent,
+						Text:    smsContent,
 						Indices: smsIndices,
-						Status: smsStatus,
-						Sender: smsSender,
-						Date: smsDate,
+						Status:  smsStatus,
+						Sender:  smsSender,
+						Date:    smsDate,
 					}
 					log.Println("[NRModuleSMS] fetch sms, sender:", smsSender, "content:", smsContent, "status:", smsStatus, "indices", smsIndices, "date:", dateStr)
 					resSMS = append(resSMS, sms)
 				} else {
-					resulterr = errors.Join(resulterr, errors.New("parse SMS" + string(index) + " failed"))
+					resulterr = errors.Join(resulterr, errors.New("parse SMS"+string(index)+" failed"))
 				}
 			}
 		}
-		
+
 	} else {
 		return nil, errors.New("fetch sms rawdata failed")
 	}
-	
- 	return resSMS, resulterr
-} 
+
+	return resSMS, resulterr
+}
 
 func (nri *NRInterface) DeleteSMS(indices []int) error {
 
@@ -112,7 +112,7 @@ func (nri *NRInterface) DeleteSMS(indices []int) error {
 	if len(indices) == 0 {
 		return nil
 	}
-	
+
 	for i, index := range indices {
 		if i == 0 {
 			atcmds = append(atcmds, fmt.Sprintf("AT+CMGD=%d", index))
@@ -143,15 +143,15 @@ func (nri *NRInterface) SendRawSMS(phone string, msg string) error {
 	msgUCS2 := fmt.Sprintf("%X", stringToUCS2Hex(msg))
 
 	atcmd := fmt.Sprintf("AT+CMGF=1;+CSCS=\"UCS2\";+CMGS=\"%s\",%d,1,1\r\n", phoneUCS2, uid)
-	
+
 	rawdata := nri.FetchRawData(atcmd, time.Second)
-	
+
 	if strings.Contains(rawdata, ">") {
 		atcmd = msgUCS2 + string(rune(0x1A))
-		rawdata = nri.FetchRawData(atcmd, 3 * time.Second)
-		
+		rawdata = nri.FetchRawData(atcmd, 3*time.Second)
+
 		time.Sleep(time.Second)
-		
+
 		log.Println("[SMS Sender] rawdata:", rawdata)
 		if strings.Contains(rawdata, "OK") {
 			return nil
@@ -161,6 +161,6 @@ func (nri *NRInterface) SendRawSMS(phone string, msg string) error {
 	} else {
 		return errors.New("sms sender not receive the prompt")
 	}
-	
+
 	return nil
 }

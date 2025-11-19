@@ -11,19 +11,19 @@ import (
 
 type NRInterfacePort struct {
 	LocalBaudRate int
-	LocalPort string
-	RemoteAPI string
+	LocalPort     string
+	RemoteAPI     string
 }
 
 type NRInterface struct {
-	IsLocal bool
-	LocalSerial string
+	IsLocal         bool
+	LocalSerial     string
 	LocalSerialBaud int
-	RemoteSerial string
+	RemoteSerial    string
 
-	mu sync.Mutex
+	mu         sync.Mutex
 	supervisor *SerialSupervisor
-	reqID uint32
+	reqID      uint32
 
 	infoRegistry *InfoRegistry
 }
@@ -34,7 +34,7 @@ func (nri *NRInterface) registerDefaultInfoProviders() {
 	nri.infoRegistry.Register(&ModuleCPUTempProvider{})
 	nri.infoRegistry.Register(&SimStatusProvider{})
 	nri.infoRegistry.Register(&SimActiveProvider{})
-	
+
 	nri.infoRegistry.Register(&APNProvider{})
 	nri.infoRegistry.Register(&IPV4Provider{})
 	nri.infoRegistry.Register(&IPV6Provider{})
@@ -44,7 +44,7 @@ func (nri *NRInterface) registerDefaultInfoProviders() {
 	nri.infoRegistry.Register(&CellIDProvider{})
 	nri.infoRegistry.Register(&DownloadSizeProvider{})
 	nri.infoRegistry.Register(&UploadSizeProvider{})
-	
+
 	nri.infoRegistry.Register(&LTERSRPProvider{})
 	nri.infoRegistry.Register(&LTERSQProvider{})
 	nri.infoRegistry.Register(&LTESINRProvider{})
@@ -56,11 +56,11 @@ func (nri *NRInterface) registerDefaultInfoProviders() {
 func NewNRInterface(port NRInterfacePort, isLocal bool) *NRInterface {
 
 	nri := &NRInterface{
-		IsLocal: isLocal,
-		LocalSerial: port.LocalPort,
+		IsLocal:         isLocal,
+		LocalSerial:     port.LocalPort,
 		LocalSerialBaud: port.LocalBaudRate,
-		RemoteSerial: port.RemoteAPI,
-		infoRegistry: NewInfoRegistry(),
+		RemoteSerial:    port.RemoteAPI,
+		infoRegistry:    NewInfoRegistry(),
 	}
 
 	if isLocal {
@@ -71,44 +71,44 @@ func NewNRInterface(port NRInterfacePort, isLocal bool) *NRInterface {
 	}
 
 	nri.registerDefaultInfoProviders()
-	
+
 	return nri
 }
 
 func (nri *NRInterface) RegisterInfoProvider(provider InfoProvider) {
-		
+
 	nri.infoRegistry.Register(provider)
 }
 
 func (nri *NRInterface) GetInfo(key string) (interface{}, error) {
-	
+
 	provider, exists := nri.infoRegistry.Get(key)
 	if !exists {
 		return nil, errors.New("info provider not found for key: " + key)
 	}
-	
+
 	return provider.Fetch(nri)
 }
 
 func (nri *NRInterface) GetAllInfoKeys() []string {
-	
+
 	return nri.infoRegistry.GetAllKeys()
 }
 
 func (nri *NRInterface) FetchAllInfo() (map[string]interface{}, error) {
-	
+
 	result := make(map[string]interface{})
 	errors := make([]string, 0)
-	
+
 	keys := nri.infoRegistry.GetAllKeys()
-	
+
 	for _, key := range keys {
 		provider, exists := nri.infoRegistry.Get(key)
 		if !exists {
 			errors = append(errors, fmt.Sprintf("provider not found for key: %s", key))
 			continue
 		}
-		
+
 		info, err := provider.Fetch(nri)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("error fetching %s: %v", key, err))
@@ -116,45 +116,45 @@ func (nri *NRInterface) FetchAllInfo() (map[string]interface{}, error) {
 		}
 		result[key] = info
 	}
-	
+
 	if len(errors) > 0 {
 		return result, fmt.Errorf("encountered %d errors: %s", len(errors), strings.Join(errors, "; "))
 	}
-	
+
 	return result, nil
 }
 
 func (nri *NRInterface) FetchMultipleInfo(keys []string) (map[string]interface{}, error) {
-	
-    result := make(map[string]interface{})
-    errors := make([]string, 0)
-    
-    for _, key := range keys {
-        provider, exists := nri.infoRegistry.Get(key)
-        if !exists {
-            errors = append(errors, fmt.Sprintf("provider not found for key: %s", key))
-            continue
-        }
-        
-        info, err := provider.Fetch(nri)
-        if err != nil {
-            errors = append(errors, fmt.Sprintf("error fetching %s: %v", key, err))
-            continue
-        }
-        
-        result[key] = info
-    }
-    
-    if len(errors) > 0 {
-        return result, fmt.Errorf("encountered %d errors: %s", len(errors), strings.Join(errors, "; "))
-    }
-    
-    return result, nil
+
+	result := make(map[string]interface{})
+	errors := make([]string, 0)
+
+	for _, key := range keys {
+		provider, exists := nri.infoRegistry.Get(key)
+		if !exists {
+			errors = append(errors, fmt.Sprintf("provider not found for key: %s", key))
+			continue
+		}
+
+		info, err := provider.Fetch(nri)
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("error fetching %s: %v", key, err))
+			continue
+		}
+
+		result[key] = info
+	}
+
+	if len(errors) > 0 {
+		return result, fmt.Errorf("encountered %d errors: %s", len(errors), strings.Join(errors, "; "))
+	}
+
+	return result, nil
 }
 
 func (nri *NRInterface) FetchModuleInfo() (map[string]interface{}, error) {
 
-	keys := []string {
+	keys := []string{
 		"ModuleName",
 		"ModuleCPUTemp",
 		"SimStatus",
@@ -166,23 +166,27 @@ func (nri *NRInterface) FetchModuleInfo() (map[string]interface{}, error) {
 
 func (nri *NRInterface) FetchNetworkInfo() (map[string]interface{}, error) {
 
-	keys := []string {
-		"NetworkMode",
-		"DuplexMode",
-		"MCCMNC",
-		"APN",
-		"CellID",
-		"IPV4",
-		"IPV6",
-		"UploadSize",
-		"DownloadSize",
+	isActive, _ := nri.GetInfo("SimStatus")
+	if isActive.(bool) {
+		keys := []string{
+			"NetworkMode",
+			"DuplexMode",
+			"MCCMNC",
+			"APN",
+			"CellID",
+			"IPV4",
+			"IPV6",
+			"UploadSize",
+			"DownloadSize",
+		}
+
+		return nri.FetchMultipleInfo(keys)
+	} else {
+		return nil, errors.New("network inactivity")
 	}
-
-	return nri.FetchMultipleInfo(keys)
 }
-
 func (nri *NRInterface) FetchSignalInfo(mode string) (map[string]interface{}, error) {
-	
+
 	if strings.Contains(mode, "NR") {
 		keys := []string{
 			"NR_RSRP",
@@ -215,8 +219,8 @@ func (nri *NRInterface) fetchRawDataLocal(atcommand string, timeout time.Duratio
 
 	nri.reqID++
 	req := SerialRequest{
-		ID: nri.reqID,
-		Data: []byte(atcommand),
+		ID:      nri.reqID,
+		Data:    []byte(atcommand),
 		Timeout: timeout,
 	}
 
@@ -232,13 +236,13 @@ func (nri *NRInterface) fetchRawDataLocal(atcommand string, timeout time.Duratio
 }
 
 func (nri *NRInterface) fetchRawDataRemote(atcommand string) string {
-	
+
 	log.Println("[NRInterface] http api not implemented yet")
 	return ""
 }
 
 func (nri *NRInterface) Close() {
-	
+
 	if nri.supervisor != nil && nri.IsLocal {
 		nri.supervisor = nil
 	}

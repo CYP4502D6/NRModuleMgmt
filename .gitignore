@@ -1,5 +1,4 @@
 .projectile
-main.go
 go.work
 go.work.sum
 nrmodule

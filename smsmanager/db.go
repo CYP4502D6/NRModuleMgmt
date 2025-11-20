@@ -70,24 +70,39 @@ func (sdb *SMSDatabase) getSMSID(sms atserial.NRModuleSMS) (int64, error) {
 }
 
 func (sdb *SMSDatabase) InsertSMS(sms atserial.NRModuleSMS) (dbID int64, isNew bool, err error) {
+	
+    tx, err := sdb.db.Begin()
+    if err != nil {
+        return 0, false, err
+    }
+    defer tx.Rollback()
 
-	result, err := sdb.db.Exec(`
-		INSERT OR IGNORE INTO sms (sender, content, status, received_at, module_indices)
-		VALUES (?, ?, ?, ?, ?)
-	`, sms.Sender, sms.Text, sms.Status, sms.Date, sms.Indices)
+    var id int64
+    err = tx.QueryRow("SELECT id FROM sms WHERE sender = ? AND content = ? AND received_at = ? LIMIT 1",
+        sms.Sender, sms.Text, sms.Date).Scan(&id)
+    
+    if err == nil {
+        return id, false, nil
+    }
+    
+    if err != sql.ErrNoRows {
+        return 0, false, err
+    }
 
-	if err != nil {
-		return 0, false, err
-	}
+    result, err := tx.Exec("INSERT INTO sms (sender, content, status, received_at, module_indices) VALUES (?, ?, ?, ?, ?)",
+        sms.Sender, sms.Text, sms.Status, sms.Date, sms.Indices)
+    
+    if err != nil {
+        return 0, false, err
+    }
 
-	ra, _ := result.RowsAffected()
-	if ra == 0 {
-		id, err := sdb.getSMSID(sms)
-		return id, false, err
-	}
+    id, err = result.LastInsertId()
+    if err != nil {
+        return 0, false, err
+    }
 
-	id, err := result.LastInsertId()
-	return id, true, err
+    err = tx.Commit()
+    return id, true, err
 }
 
 func (sdb *SMSDatabase) GetSMSByID(id int64) (*SMSRecord, error) {

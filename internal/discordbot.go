@@ -75,7 +75,7 @@ func (bot *DiscordBot) sendSMSRecordList(m *discordgo.MessageCreate, records []*
 		batch := records[i:end]
 
 		embed := &discordgo.MessageEmbed{
-			Title: fmt.Sprintf("SMS Record List [%d-%d] (Total: %d)", start, end, len(records)),
+			Title: fmt.Sprintf("SMS Record List [%d-%d] (Total: %d)", i, end, len(records)),
 			Color: 0xff9900,
 		}
 
@@ -92,6 +92,23 @@ func (bot *DiscordBot) sendSMSRecordList(m *discordgo.MessageCreate, records []*
 	}
 }
 
+func (bot *DiscordBot) formatInfoEmbed(infoType string, data map[string]interface{}) *discordgo.MessageEmbed {
+
+	fields := make([]*discordgo.MessageEmbedField, 0, len(data))
+	for k, v := range data {
+		fields = append(fields, &discordgo.MessageEmbedField{
+			Name:   k,
+			Value:  fmt.Sprintf("%v", v),
+			Inline: true,
+		})
+	}
+
+	return &discordgo.MessageEmbed{
+		Title:  fmt.Sprintf("%s Info", strings.ToUpper(infoType)),
+		Color:  0x0099ff,
+		Fields: fields,
+	}
+}
 
 func (bot *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
@@ -154,20 +171,16 @@ func (bot *DiscordBot) processInfoCmd(s *discordgo.Session, m *discordgo.Message
 	infoType := strings.ToLower(args[0])
 	var result map[string]interface{}
 	var err error
-	var resultStr string
 
 	switch infoType {
 
 	case "module":
-		resultStr = "module info:\n"
 		result, err = bot.nri.FetchModuleInfo()
 
 	case "network":
-		resultStr = "network info:\n"
 		result, err = bot.nri.FetchNetworkInfo()
 
 	case "signal":
-		resultStr = "signal info:\n"
 		networkMode, _ := bot.nri.GetInfo("NetworkMode")
 		networkModeStr, ok := networkMode.(string)
 
@@ -182,7 +195,6 @@ func (bot *DiscordBot) processInfoCmd(s *discordgo.Session, m *discordgo.Message
 		}
 		
 	default:
-		resultStr = fmt.Sprintf("%s info:\n", args[0])
 		var info interface{}
 		info, err = bot.nri.GetInfo(args[0])
 		if err == nil {
@@ -195,11 +207,7 @@ func (bot *DiscordBot) processInfoCmd(s *discordgo.Session, m *discordgo.Message
 		return
 	}
 
-	for key, value := range result {
-		resultStr += fmt.Sprintf("    %s: %v\n", key, value)
-	}
-
-	bot.session.ChannelMessageSend(m.ChannelID, resultStr)
+	bot.session.ChannelMessageSendEmbed(m.ChannelID, bot.formatInfoEmbed(infoType, result))
 }
 
 func (bot *DiscordBot) processSMSCmd(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {

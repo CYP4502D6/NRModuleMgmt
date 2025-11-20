@@ -2,7 +2,7 @@
 # NR Module Monitor
 
 A Go application for monitoring Quectel's 5G NR celluar network modules via AT commands, featuring SMS management and Discord integration.
-Q
+
 ## Features
 - Retrieve module information (name, CPU temp, SIM status)
 - Query network details (APN, IP addresses, cell ID, data usage)

@@ -42,9 +42,61 @@ func (bot *DiscordBot) OnNewSMS(sms atserial.NRModuleSMS) {
 	}
 }
 
+func (bot *DiscordBot) sendSMSRecord(m *discordgo.MessageCreate, record *smsmanager.SMSRecord) {
+	
+	embed := &discordgo.MessageEmbed{
+		Title:       fmt.Sprintf("SMS Details [ID: %d]", record.DBID),
+		Color:       0xff9900,
+		Description: fmt.Sprintf(" Sender: %s\n Content: %s", record.Sender, record.Text),
+		Fields: []*discordgo.MessageEmbedField{
+			{Name: "Status", Value: record.Status, Inline: true},
+			{Name: "Reception Time", Value: record.Date.Format("2006-01-02 15:04:05"), Inline: true},
+			{Name: "Module Indices", Value: strconv.Itoa(record.Indices), Inline: true},
+			{Name: "Warehousing Time", Value: record.CreatAt.Format("2006-01-02 15:04:05"), Inline: true},
+		},
+	}
+	
+	_, _ = bot.session.ChannelMessageSendEmbed(m.ChannelID, embed)
+}
+
+func (bot *DiscordBot) sendSMSRecordList(m *discordgo.MessageCreate, records []*smsmanager.SMSRecord, start int64, end int64) {
+
+	if len(records) == 0 {
+		bot.session.ChannelMessageSend(m.ChannelID, fmt.Sprintf("No SMS message found within the ID range: %d-%d", start, end))
+		return
+	}
+
+	batchSize := 5
+	for i := 0; i < len(records); i += batchSize {
+		end := i + batchSize
+		if end > len(records) {
+			end = len(records)
+		}
+		batch := records[i:end]
+
+		embed := &discordgo.MessageEmbed{
+			Title: fmt.Sprintf("SMS Record List [%d-%d] (Total: %d)", start, end, len(records)),
+			Color: 0xff9900,
+		}
+
+		for _, record := range batch {
+			embed.Fields = append(embed.Fields, &discordgo.MessageEmbedField{
+				Name: fmt.Sprintf("ID: %d | From: %s", record.DBID, record.Sender),
+				Value: fmt.Sprintf("Content: %s\nTime: %s",record.Text,
+					record.Date.Format("01-02 15:04")),
+				Inline: false,
+			})
+		}
+
+		_, _ = bot.session.ChannelMessageSendEmbed(m.ChannelID, embed)
+	}
+}
+
+
 func (bot *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageCreate) {
 
-	log.Println("[DiscordBot]", m.Content, m.ChannelID, m.Author)
+	help := "*List of Available Commands*\n**Information Query:**\n!info module - Query module information\n!info network - Query network information\n!info signal - Query signal information\n!info <key> - Query specific information (e.g., ModuleName)\n**SMS Operations:**\n!sms send <phone number> <content> - Send an SMS message\n!sms count - Query the total number of SMS messages\n!sms get <DBID> - Query SMS messages with a specific ID\n!sms list <DBID_start> <DBID_end> - Query SMS messages within a range of IDs\n**Other:**\n!help - Display this help information\n!check - Send new SMS detection trigger signal"
+
 	if m.Author.ID == s.State.User.ID {
 		return
 	}
@@ -79,6 +131,12 @@ func (bot *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageC
 		
 		s.ChannelMessageEdit(m.ChannelID, checkingMsg.ID, "Signal has been triggered, a new SMS will be sent")
 
+	case "sms":
+		bot.processSMSCmd(s, m, args[1:])
+
+	case "help":
+		s.ChannelMessageSend(m.ChannelID, help)
+		
 	default:
 		bot.session.ChannelMessageSend(m.ChannelID, "unknown command, type !help to view help") 
 	}
@@ -87,8 +145,9 @@ func (bot *DiscordBot) handleMessage(s *discordgo.Session, m *discordgo.MessageC
 }
 
 func (bot *DiscordBot) processInfoCmd(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
+	
 	if len(args) == 0 {
-		bot.session.ChannelMessageSend(m.ChannelID, "Please Please specify the information type: module, network, signal")
+		bot.session.ChannelMessageSend(m.ChannelID, "Please specify the information type: module, network, signal")
 		return
 	}
 
@@ -143,6 +202,79 @@ func (bot *DiscordBot) processInfoCmd(s *discordgo.Session, m *discordgo.Message
 	bot.session.ChannelMessageSend(m.ChannelID, resultStr)
 }
 
+func (bot *DiscordBot) processSMSCmd(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
+
+	if len(args) == 0 {
+		bot.session.ChannelMessageSend(m.ChannelID, "Please specify the subcommand type: send, count, get, list")
+		return
+	}
+
+	cmdType := strings.ToLower(args[0])
+
+	switch cmdType {
+
+	case "send":
+		if len(args) < 3 {
+			bot.session.ChannelMessageSend(m.ChannelID, "Usage: !sms send <phone number> <content>")
+			return
+		}
+		phone := args[1]
+		msg := strings.Join(args[2:], " ")
+		err := bot.nri.SendRawSMS(phone, msg)
+		if err != nil {
+			bot.session.ChannelMessageSend(m.ChannelID, fmt.Sprintf("SMS Failed To Send: %v", err))
+		} else {
+			bot.session.ChannelMessageSend(m.ChannelID, "SMS Sent Successfully")
+		}
+
+	case "count":
+		count, err := bot.smsManager.GetDBStats()
+		if err != nil {
+			bot.session.ChannelMessageSend(m.ChannelID, fmt.Sprintf("SMS Database Failed To Query: %v", err))
+		} else {
+			bot.session.ChannelMessageSend(m.ChannelID, fmt.Sprintf("SMS Count In Database: %d", count))
+		}
+
+	case "get":
+		if len(args) < 2 {
+			bot.session.ChannelMessageSend(m.ChannelID, "Usage: !sms get <DBID>")
+			return
+		}
+		id, err := strconv.ParseInt(args[1], 10, 64)
+		if err != nil {
+			bot.session.ChannelMessageSend(m.ChannelID, "DBID Must Be An Integer")
+			return
+		}
+		record, err := bot.smsManager.GetSMSByID(id)
+		if err != nil {
+			bot.session.ChannelMessageSend(m.ChannelID, fmt.Sprintf("SMS Failed To Query: %v", err))
+		} else {
+			bot.sendSMSRecord(m, record)
+		}
+
+	case "list":
+		if len(args) < 3 {
+			bot.session.ChannelMessageSend(m.ChannelID, "Usage: !sms list <DBID_start> <DBID_end>")
+			return
+		}
+		startid, err1 := strconv.ParseInt(args[1], 10, 64)
+		endid, err2 := strconv.ParseInt(args[2], 10, 64)
+		if err1 != nil || err2 != nil {
+			bot.session.ChannelMessageSend(m.ChannelID, "DBID Must Be An Integer")
+			return
+		}
+		records, err := bot.smsManager.GetSMSByIDRange(startid, endid)
+		if err != nil {
+			bot.session.ChannelMessageSend(m.ChannelID, fmt.Sprintf("SMS Failed To Query By Range: %v", err))
+		} else {
+			bot.sendSMSRecordList(m, records, startid, endid)
+		}
+		
+	default:
+		bot.session.ChannelMessageSend(m.ChannelID, "unknown command, type !help to view help") 
+	}
+}
+
 func NewDiscordBot(token string, channelID string, nri *atserial.NRInterface, smsManager *smsmanager.Manager) (*DiscordBot, error) {
 
 	dg, err := discordgo.New("Bot " + token)
@@ -155,7 +287,7 @@ func NewDiscordBot(token string, channelID string, nri *atserial.NRInterface, sm
 		channelID:     channelID,
 		nri:           nri,
 		smsManager:    smsManager,
-		commandPrefix: "/",
+		commandPrefix: "!",
 	}
 
 	dg.AddHandler(bot.handleMessage)

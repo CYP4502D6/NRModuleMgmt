@@ -134,7 +134,6 @@ func (m *Manager) checkAndProcessSMS() {
 			log.Println("[SMSManager] insert sms to database failed,", err)
 			continue
 		}
-		isNew = true
 		if isNew {
 			log.Println("[SMSManager] new sms", dbID, " from", sms.Sender)
 			m.observerManager.NotifyNewSMS(sms)
@@ -143,7 +142,7 @@ func (m *Manager) checkAndProcessSMS() {
 			log.Println("[SMSManager] existed sms", dbID, " from", sms.Sender)
 		}
 
-		//indicesToDelete = append(indicesToDelete, sms.Indices)
+		indicesToDelete = append(indicesToDelete, sms.Indices)
 	}
 	
 	if len(indicesToDelete) > 0 && len(indicesToDelete) <= 10 {

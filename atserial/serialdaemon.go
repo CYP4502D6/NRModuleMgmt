@@ -10,8 +10,6 @@ import (
 	"context"
 	"encoding/hex"
 	"crypto/sha256"
-
-	"go.bug.st/serial"
 )
 
 type SerialRequest struct {
@@ -46,7 +44,7 @@ type inFlightRequest struct {
 type PortDaemon struct {
 	portname string
 	baudrate int
-	port     serial.Port
+	port     *PosixSerialPort
 
 	reqChan chan msgIn
 	quit    chan struct{}
@@ -71,32 +69,13 @@ func (pd *PortDaemon) initializePort() {
 		log.Println("[PortDaemon] Port is nil, cannot initialize")
 		return
 	}
-	
-	mode := &serial.Mode{
-        BaudRate: pd.baudrate,
-        DataBits: 8,
-        Parity:   serial.NoParity,
-        StopBits: serial.OneStopBit,
-    }
-
-    if err := pd.port.SetMode(mode); err != nil {
-        log.Printf("[PortDaemon] Failed to set mode: %v", err)
-    }
-    
-	if err := pd.port.SetDTR(true); err != nil {
-        log.Printf("[PortDaemon] Failed to set DTR: %v", err)
-    }
-	
-    if err := pd.port.SetRTS(true); err != nil {
-        log.Printf("[PortDaemon] Failed to set RTS: %v", err)
-    }
-    
+		
 	if _, err := pd.port.Write([]byte("ATE0\r\n")); err != nil {
 		log.Printf("[PortDaemon] Failed to send ATE0: %v", err)
 	}
 	
 	time.Sleep(50 * time.Millisecond) 
-
+	
 	buf := make([]byte, 4096)
 	pd.port.SetReadTimeout(time.Second * 2)
 	if n, err := pd.port.Read(buf); err != nil {
@@ -130,8 +109,7 @@ func (pd *PortDaemon) initializePort() {
 
 func StartPortDaemon(portname string, baudrate int) (*PortDaemon, error) {
 	
-	mode := &serial.Mode{BaudRate: baudrate}
-	port, err := serial.Open(portname, mode)
+	port, err := OpenPosixSerial(portname, baudrate)
 	if err != nil {
 		log.Println("[PortDaemon] failed to open port:", err)
 		return nil, err
@@ -368,6 +346,7 @@ func (pd *PortDaemon) processCommand(m msgIn) {
 }
 
 func (pd *PortDaemon) handleNormalCommand(m msgIn, cmdStr string, effectiveTimeout time.Duration, startTime time.Time) {
+	
     ctx, cancel := context.WithTimeout(context.Background(), effectiveTimeout)
     defer cancel()
 
@@ -532,16 +511,14 @@ func (pd *PortDaemon) checkStuckRequests() {
 }
 
 func (pd *PortDaemon) Stop() {
+	
     if pd.running {
         pd.running = false
         close(pd.quit)
         
 		if pd.port != nil {
-            pd.port.SetDTR(false)
-            pd.port.SetRTS(false)
-            time.Sleep(100 * time.Millisecond)
-            pd.port.Close()
-        }
+			pd.port.Close()
+		}
     }
 }
 
@@ -572,6 +549,7 @@ func NewSupervisor(portname string, baudrate int) *SerialSupervisor {
 }
 
 func (s *SerialSupervisor) supervisor() {
+	
 	for {
 		d, err := StartPortDaemon(s.portname, s.baudrate)
 		if err != nil {
@@ -626,6 +604,7 @@ func (s *SerialSupervisor) supervisor() {
 }
 
 func (s *SerialSupervisor) Query(req SerialRequest) (SerialResponse, error) {
+	
 	<-s.started
 
 	s.mu.RLock()

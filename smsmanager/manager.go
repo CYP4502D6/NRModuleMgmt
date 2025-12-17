@@ -17,6 +17,7 @@ type Manager struct {
 	lastCheckTime time.Time
 	mu            sync.Mutex
 
+	checkcount int
 	running  bool
 	stopChan chan struct{}
 	triggerChan chan struct{}
@@ -100,18 +101,24 @@ func (m *Manager) monitorLoop() {
 			
 		case <-m.stopChan:
 			log.Println("[SMSManager] exiting the monitor loop")
+			return
 		}
 	}
 }
 
 func (m *Manager) checkAndProcessSMS() {
 
+	m.checkcount++
+	if m.checkcount >= 101 {
+		m.checkcount = 0
+	}
+	
 	if len(m.observerManager.observers) == 0 {
 		log.Println("[SMSManager] no observer registed, skip check")
 		return
 	}
 	
-	log.Println("[SMSManager] checking SMS")
+	//log.Println("[SMSManager] checking SMS")
 
 	smsList, err := m.nri.FetchSMS()
 	if err != nil {
@@ -120,7 +127,9 @@ func (m *Manager) checkAndProcessSMS() {
 	}
 
 	if len(smsList) == 0 {
-		log.Println("[SMSManager] no incoming sms")
+		if m.checkcount == 100 {
+			log.Println("[SMSManager] no incoming sms during 100 times check")
+		}
 		return
 	}
 

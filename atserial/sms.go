@@ -58,7 +58,7 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 	var resSMS []NRModuleSMS
 	var resulterr error
 
-	rawdata := nri.FetchRawData("AT+CSMS=1;+CSDH=0;+CNMI=2,1,0,0,0;+CMGF=1;+CSCA?;+CSMP=17,167,0,8;+CPMS=\"ME\",\"ME\",\"ME\";+CSCS=\"UCS2\";+CMGL=\"ALL\"\r\n", 2*time.Second)
+	rawdata := nri.FetchRawData("AT+CSMS=1;+CSDH=0;+CNMI=2,1,0,0,0;+CMGF=1;+CSCA?;+CSMP=17,167,0,8;+CPMS=\"ME\",\"ME\",\"ME\";+CSCS=\"UCS2\";+CMGL=\"ALL\"\r\n", 15 * time.Second)
 
 	if strings.Contains(rawdata, "OK") {
 
@@ -99,7 +99,7 @@ func (nri *NRInterface) FetchSMS() ([]NRModuleSMS, error) {
 		}
 
 	} else {
-		return nil, errors.New("fetch sms rawdata failed")
+		return nil, errors.New("fetch sms rawdata failed " + rawdata)
 	}
 
 	return resSMS, resulterr
